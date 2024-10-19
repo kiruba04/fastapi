@@ -1,5 +1,5 @@
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, File, UploadFile, Form
+from fastapi.responses import StreamingResponse, HTMLResponse
 from pydantic import BaseModel
 from rembg import remove
 from PIL import Image
@@ -9,12 +9,15 @@ import wave
 import noisereduce as nr
 import nltk
 from nltk.corpus import stopwords
+from fastapi.staticfiles import StaticFiles
 
 # Ensure NLTK stopwords are downloaded
 nltk.download('stopwords')
 
 # Initialize the FastAPI app
 app = FastAPI()
+
+
 
 # Request model for text input
 class TextInput(BaseModel):
@@ -37,10 +40,115 @@ def write_wav(audio_data, params):
     output_io.seek(0)
     return output_io
 
+@app.get("/", response_class=HTMLResponse)
+async def get_frontend():
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>FastAPI Tools</title>
+        <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { text-align: center; }
+            .container { max-width: 600px; margin: 0 auto; }
+            .form-group { margin-bottom: 20px; }
+            label { display: block; margin-bottom: 5px; }
+            input, textarea, button { width: 100%; padding: 10px; font-size: 1rem; }
+            button { background-color: #007BFF; color: white; border: none; cursor: pointer; }
+            button:hover { background-color: #0056b3; }
+            .output { margin-top: 20px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>FastAPI Tools</h1>
 
-@app.get('/')
-async def root():
-    return {"message": "Noise reduction endpoint"}
+            <!-- Audio Noise Removal Form -->
+            <div class="form-group">
+                <label for="audio-file">Upload Audio for Noise Removal:</label>
+                <input type="file" id="audio-file">
+                <button onclick="removeNoise()">Remove Noise</button>
+            </div>
+            <div class="output" id="audio-output"></div>
+
+            <!-- Stop Words Removal Form -->
+            <div class="form-group">
+                <label for="text-input">Enter Text to Remove Stop Words:</label>
+                <textarea id="text-input" rows="4"></textarea>
+                <button onclick="removeStopWords()">Remove Stop Words</button>
+            </div>
+            <div class="output" id="text-output"></div>
+
+            <!-- Background Removal Form -->
+            <div class="form-group">
+                <label for="image-file">Upload Image for Background Removal:</label>
+                <input type="file" id="image-file">
+                <button onclick="removeBackground()">Remove Background</button>
+            </div>
+            <div class="output" id="image-output"></div>
+        </div>
+
+        <script>
+            async function removeNoise() {
+                const fileInput = document.getElementById('audio-file');
+                const output = document.getElementById('audio-output');
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+
+                const response = await fetch('/remove-audio-noise/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    output.innerHTML = `<audio controls src="${url}"></audio>`;
+                } else {
+                    output.textContent = 'Error removing noise';
+                }
+            }
+
+            async function removeStopWords() {
+                const textInput = document.getElementById('text-input').value;
+                const output = document.getElementById('text-output');
+
+                const response = await fetch('/remove-stop-words/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: textInput })
+                });
+
+                const result = await response.json();
+                output.textContent = 'Filtered Text: ' + result.filtered_text;
+            }
+
+            async function removeBackground() {
+                const fileInput = document.getElementById('image-file');
+                const output = document.getElementById('image-output');
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+
+                const response = await fetch('/remove-background/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    output.innerHTML = `<img src="${url}" alt="Image with background removed" style="max-width: 100%;">`;
+                } else {
+                    output.textContent = 'Error removing background';
+                }
+            }
+        </script>
+    </body>
+    </html>
+    """
+    return html_content
 
 # Noise reduction endpoint    
 @app.post("/remove-audio-noise/")
